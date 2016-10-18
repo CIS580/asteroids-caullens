@@ -1,18 +1,22 @@
 "use strict";
 
 const MS_PER_FRAME = 1000/8;
+const Bullet = require('./bullet.js');
 
 /**
  * @module exports the Player class
  */
 module.exports = exports = Player;
 
+var laserShoot = new Audio('assets/laser.wav');
+var die = new Audio('assets/explodeship.wav');
+
 /**
  * @constructor Player
  * Creates a new player object
  * @param {Postition} position object specifying an x and y
  */
-function Player(position, canvas) {
+function Player(position, canvas, score, lives) {
   this.worldWidth = canvas.width;
   this.worldHeight = canvas.height;
   this.state = "idle";
@@ -29,6 +33,12 @@ function Player(position, canvas) {
   this.thrusting = false;
   this.steerLeft = false;
   this.steerRight = false;
+  this.shooting = false;
+  this.frame = 0;
+  this.bullets = [];
+  this.lives = lives;
+  this.score = score;
+  this.died = false;
 
   var self = this;
   window.onkeydown = function(event) {
@@ -44,6 +54,9 @@ function Player(position, canvas) {
       case 'ArrowRight': // right
       case 'd':
         self.steerRight = true;
+        break;
+      case 'e': // Couldn't make spacebar work
+        self.shooting = true;
         break;
     }
   }
@@ -62,6 +75,8 @@ function Player(position, canvas) {
       case 'd':
         self.steerRight = false;
         break;
+      case 'e': //Couldn't make spacebar work
+        self.shooting = false;
     }
   }
 }
@@ -72,7 +87,7 @@ function Player(position, canvas) {
  * @function updates the player object
  * {DOMHighResTimeStamp} time the elapsed time since the last frame
  */
-Player.prototype.update = function(time) {
+Player.prototype.update = function(time, ctx, asteroids) {
   // Apply angular velocity
   if(this.steerLeft) {
     this.angle += time * 0.005;
@@ -83,11 +98,17 @@ Player.prototype.update = function(time) {
   // Apply acceleration
   if(this.thrusting) {
     var acceleration = {
-      x: Math.sin(this.angle),
-      y: Math.cos(this.angle)
+      x: Math.sin(this.angle)/4,
+      y: Math.cos(this.angle)/4
     }
     this.velocity.x -= acceleration.x;
     this.velocity.y -= acceleration.y;
+  }
+  //Shoot bullets
+  if(this.shooting && this.frame == 0) {
+    this.bullets.push(new Bullet(this.position, ctx, this.angle));
+    if(this.bullets.length > 32) this.bullets.shift();
+    laserShoot.play();
   }
   // Apply velocity
   this.position.x += this.velocity.x;
@@ -97,6 +118,28 @@ Player.prototype.update = function(time) {
   if(this.position.x > this.worldWidth) this.position.x -= this.worldWidth;
   if(this.position.y < 0) this.position.y += this.worldHeight;
   if(this.position.y > this.worldHeight) this.position.y -= this.worldHeight;
+
+  var self = this;
+  // Update bullets
+  this.bullets.forEach(function(bullet) {
+    self.score += 100*bullet.update(time, asteroids);
+  });
+  if(this.frame == 3) this.frame = 0;
+  else this.frame++;
+
+  var self = this;
+  // Check for collisions with asteroids
+  asteroids.forEach(function(asteroid) {
+    if(self.position.x + 10 + asteroid.size > asteroid.position.x &&
+       self.position.x < asteroid.position.x + 10 + asteroid.size &&
+       self.position.y + 10 + asteroid.size > asteroid.position.y &&
+       self.position.y < asteroid.position.y + 10 + asteroid.size) {
+         die.play();
+         self.lives--;
+         self.died = true;
+       }
+  });
+  return true;
 }
 
 /**
@@ -129,5 +172,11 @@ Player.prototype.render = function(time, ctx) {
     ctx.strokeStyle = 'orange';
     ctx.stroke();
   }
+
   ctx.restore();
+
+  //Draw bullets
+  this.bullets.forEach(function(bullet) {
+    bullet.render(time, ctx);
+  });
 }
